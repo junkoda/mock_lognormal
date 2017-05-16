@@ -3,20 +3,31 @@
 
 #include <fftw3.h>
 
+enum FFTMode {fft_mode_unknown, fft_mode_x, fft_mode_k};
+
 class Grid {
  public:
-  FFTmesh(const int nc);
-  ~FFTmesh();
+  Grid(const int nc);
+  ~Grid();
 
-  void fft();
+  void fft_forward();
+  void fft_inverse();
   int get_nc() const { return nc; }
-  float* data(){ return mesh; }
   void clear();
+  void print();
+
+  double* fx;
+  fftw_complex* fk;
+  const int nc;
+  FFTMode mode;
 
  private:
-  const int nc, ncz;
-  double* fx;
-  fftwf_plan plan;
+  const int ncz;
+  fftw_plan plan_forward;
+  fftw_plan plan_inverse;
+
+  void print_k();
+  void print_x();
 };
 
 #endif

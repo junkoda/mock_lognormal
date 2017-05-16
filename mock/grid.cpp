@@ -6,8 +6,8 @@
 
 using namespace std;
 
-Grid::Grid(const int nc_) :
-  nc(nc_), ncz(2*(nc_/2+1))
+Grid::Grid(const int nc_, const double boxsize_) :
+  nc(nc_), ncz(2*(nc_/2+1)), boxsize(boxsize_)
 {
   const size_t ngrid= (size_t) nc*nc*ncz;
   fx= (double*) fftw_malloc(sizeof(double)*ngrid);
@@ -32,16 +32,31 @@ Grid::~Grid()
 
 void Grid::fft_forward()
 {
+  // fk= V/nc^3 sum_x f(x) exp(-ik x)
+  
   assert(mode == fft_mode_x);
   fftw_execute(plan_forward);
   mode = fft_mode_k;
+
+  const double fac= pow(boxsize/nc, 3.0);
+  const size_t ngrid= (size_t) nc*nc*2*(nc/2 + 1);
+  for(int i=0; i<ngrid; ++i) {
+    fx[i] *= fac;
+  }
 }
 
 void Grid::fft_inverse()
 {
+  // fx = 1/V sum_k f(k) exp(ik x)
   assert(mode == fft_mode_k);
   fftw_execute(plan_inverse);
   mode= fft_mode_x;
+
+  const double fac= 1.0/(boxsize*boxsize*boxsize);
+  const size_t ngrid= (size_t) nc*nc*2*(nc/2 + 1);
+  for(int i=0; i<ngrid; ++i) {
+    fx[i] *= fac;
+  }
 }
 
 void Grid::clear()

@@ -161,6 +161,7 @@ int main(int argc, char* argv[])
   grid->fft_forward(); // grid => P_gaussian(r)
 
   if(vm.count("print-Pkg")) {
+    // Print power spectrum of delta_g
     cout << "# P_gaussian(k)\n";
     print_pk(grid);
     return 0;
@@ -173,15 +174,21 @@ int main(int argc, char* argv[])
 
   // Final FFT from delta(k) to 1 + delta(x)
   cerr << "FFT to lognormal density 1 + delta(x)\n";
-  grid->fft_inverse(); // grid = 1 + delta_lognormal(x)
+  grid->fft_inverse();
 
   double n_max= generate_lognormal_density(grid);
+  // grid => 1 + delta_lognormal(x)
 
   cerr << "Print lognormal mock\n";
   cerr << "n_max= " << n_max << endl;
 
   print_mock(seed + 100, np, boxsize, n_max, grid);
 
+  grid->fft_forward();
+
+  compute_power_spectrum("pk.txt", grid->fk, nc, boxsize,
+			 0.0, 1.0, 0.01, 0.0);
+  cerr << "Lognormal grid power spectrum written: ps.txt\n";
   
   return 0;
 }
@@ -191,24 +198,28 @@ void set_power_spectrum(PowerSpectrum const * const ps,
 {
   // Output: grid of P(k)
   grid->clear();
-  int nc= grid->nc;
+  const int nc= grid->nc;
   const int nckz= nc/2 + 1;
 
   fftw_complex* const pk= (fftw_complex*) grid->fx; 
 
   const double fac= 2.0*M_PI/boxsize;
+  const double knq= fac*nc/2;
   
   for(int ix=0; ix<nc; ++ix) {
-   double kx= ix < nc/2 ? fac*ix : fac*(ix - nc);
+   double kx= ix <= nc/2 ? fac*ix : fac*(ix - nc);
+   if(2*ix == nc) continue;
    for(int iy=0; iy<nc; ++iy) {
-    double ky= iy < nc/2 ? fac*iy : fac*(iy - nc);
+    double ky= iy <= nc/2 ? fac*iy : fac*(iy - nc);
+    if(2*iy == nc) continue;
+    
     int iz0= (ix == 0 && iy == 0);
 
-    for(int iz=0; iz<nc/2; ++iz) {
+    for(int iz=iz0; iz<nc/2; ++iz) {
       double kz= fac*iz;
+      
       double k= sqrt(kx*kx + ky*ky + kz*kz);
       size_t index= (ix*nc + iy)*nckz + iz;
-	  
       pk[index][0]= power(ps, k);
       pk[index][1]= 0.0;
 
@@ -232,11 +243,10 @@ void set_lognormal_xi(Grid* const grid)
   
   for(int ix=0; ix<nc; ++ix) {
     for(int iy=0; iy<nc; ++iy) {
-      size_t index= (ix*nc + iy)*ncz;
       for(int iz=0; iz<nc; ++iz) {
+	size_t index= (ix*nc + iy)*ncz + iz;
 	assert(1.0 + xi[index] > 0.0);
 	xi[index]= log(1.0 + xi[index]);
-	index++;
       }
     }
   }
@@ -256,7 +266,6 @@ void compute_window_array(valarray<double>& v, const int n_mas)
   }
 }
 
-  
 void generate_delta_k(const unsigned long seed,
 		      const bool fix_amplitude,
 		      const int n_mas,
@@ -274,8 +283,9 @@ void generate_delta_k(const unsigned long seed,
   const size_t nckz= nc/2 + 1;
   const double boxsize= grid->boxsize;
   const double vol= boxsize*boxsize*boxsize;
+  fftw_complex* const fk= (fftw_complex*) grid->fx;
+  
   // P(k) = 1/V <delta(k) delta^*(k)
-
   valarray<double> v_corr(1.0, nc);
 
   gsl_rng* rng= gsl_rng_alloc(gsl_rng_ranlxd1);
@@ -284,52 +294,53 @@ void generate_delta_k(const unsigned long seed,
   size_t negative= 0;
   double P_min= 0.0;
 
-
-  fftw_complex* const fk= (fftw_complex*) grid->fx;
   
   if(n_mas > 0)
     compute_window_array(v_corr, n_mas);
 
   for(int ix=0; ix<nc; ++ix) {
-   double kx= ix < nc/2 ? ix : ix - nc;
+   if(2*ix == nc) continue;
+   double kx= ix <= nc/2 ? ix : ix - nc;
+   
    double corr_x= v_corr[ix];
    for(int iy=0; iy<nc; ++iy) {
-    double ky= iy < nc/2 ? iy : iy - nc;
+    if(2*iy == nc) continue;
+    double ky= iy <= nc/2 ? iy : iy - nc;
     double corr_xy= corr_x*v_corr[iy];
-    size_t index= (ix*nc + iy)*nckz;
-    for(int iz=0; iz<nc/2; ++iz) {
+    
+    int iz0= (ix == 0 && iy == 0);
+    for(int iz=iz0; iz<nc/2; ++iz) {
       double kz= iz;
       double k= sqrt(kx*kx + ky*ky + kz*kz);
       double corr_xyz= corr_xy*v_corr[iz];
 
-      double phase= gsl_rng_uniform(rng)*M_PI;
-      double delta2= vol*fk[index][0]/corr_xyz;
+      size_t index= (ix*nc + iy)*nckz + iz;
 
+      double ampl=1.0;
       if(!fix_amplitude) {
-	double ampl;
 	do
 	  ampl = gsl_rng_uniform(rng);
 	while(ampl == 0.0);
-	
-	delta2 *= -log(ampl);
+    
+	ampl= -log(ampl);
       }
+
+      double phase= gsl_rng_uniform(rng)*2*M_PI;
+      
+      double delta2= vol*fk[index][0]/corr_xyz;
 
       double delta_k_mag= 0.0;
       if(fk[index][0] < P_min)
 	P_min= fk[index][0];
 	  
-      if( fk[index][0] > 0.0) {
-	delta_k_mag= sqrt(delta2);
-      }
-      else {
+      if( fk[index][0] > 0.0)
+	delta_k_mag= sqrt(ampl*delta2);
+      else
 	negative++;
-      }
 
       fk[index][0]= delta_k_mag*cos(phase);
       fk[index][1]= delta_k_mag*sin(phase);
 	  
-      index++;
-
     }
    }
   }
@@ -338,6 +349,25 @@ void generate_delta_k(const unsigned long seed,
 
   fprintf(stderr, "P_min= %e\n", P_min);
   fprintf(stderr, "negative P(k): %zu\n", negative);
+
+  //
+  // reality condition
+  //
+  for(int ix=0; ix<nc; ++ix) {
+    if(2*ix == nc) continue;
+    int iix= ix == 0 ? 0 :  nc - ix;
+    assert(0 <= iix && iix < nc);
+    for(int iy=0; iy<nc; ++iy) {
+      if(2*iy == nc) continue;
+      int iiy= iy == 0 ? 0 : nc - iy;
+
+      size_t index= (ix*nc + iy)*nckz;
+      size_t iindex= (iix*nc + iiy)*nckz;
+
+      fk[iindex][0]= fk[index][0];
+      fk[iindex][1]= -fk[index][1];
+    }
+  }
 }
 
 double generate_lognormal_density(Grid* const grid)
@@ -350,37 +380,51 @@ double generate_lognormal_density(Grid* const grid)
   size_t ncz= 2*(nc/2 + 1);
   double* const delta= grid->fx;
   long double nsum= 0.0;
+  long double n2sum= 0.0;
   double nmax= 0.0;
+  double dmax= 0.0;
+  long double d2sum= 0.0;
   
   for(int ix=0; ix<nc; ++ix) {
    for(int iy=0; iy<nc; ++iy) {
-    size_t index= (ix*nc + iy)*ncz;
     for(int iz=0; iz<nc; ++iz) {
-      double d= delta[index]= exp(delta[index]);
-      nsum += d;
-      if(d > nmax) nmax= d;
-
-      //cerr << delta[index] << " " << d << endl;
+      size_t index= (ix*nc + iy)*ncz + iz;
+	  
+      double d= delta[index];
+      double n= exp(d); // lognormal density
+      delta[index] = n;
+      if(d > dmax) dmax= d;
+      d2sum += d*d;
       
-      index++;
+      // lognormal density (unnormalised)
+      nsum += n;
+      n2sum += n*n;
+      if(n > nmax) nmax= n;
+
     }
    }
   }
-
+  cerr << "dmax= " << dmax << endl;
+  cerr << "d rms= " << sqrt(d2sum/(nc*nc*nc)) << endl;
   // normalization
-  const double fac= nsum/(nc*nc*nc);
+  const double nbar= nsum/(nc*nc*nc);
+  cerr << "nbar= " << nbar << endl;
+  cerr << "n2sum= " << n2sum << endl;
+
+  // Normalise density to n(x)/nbar = 1 + delta(x)
   for(size_t ix=0; ix<nc; ++ix) {
    for(size_t iy=0; iy<nc; ++iy) {
-    size_t index= (ix*nc + iy)*ncz;
     for(int iz=0; iz<nc; ++iz) {
-      delta[index] /= fac;
-      
-      index++;
+      size_t index= (ix*nc + iy)*ncz + iz;
+
+      delta[index] /= nbar;
     }
    }
   }
 
-  return nmax/fac;
+  cerr << "Lognormal rms: " << sqrt(n2sum/(nbar*nbar*nc*nc*nc) - 1.0) << endl;
+  cerr << "nmax " << nmax/nbar << endl;
+  return nmax/nbar; // max(1 + delta)
 }
 
 double generate_gaussian_density(Grid* const grid)
@@ -399,8 +443,9 @@ double generate_gaussian_density(Grid* const grid)
   
   for(int ix=0; ix<nc; ++ix) {
    for(int iy=0; iy<nc; ++iy) {
-    size_t index= (ix*nc + iy)*ncz;
     for(int iz=0; iz<nc; ++iz) {
+      size_t index= (ix*nc + iy)*ncz + iz;
+	  
       double d= delta[index];
       nsum += 1.0 + d;
       sum2 += d*d;
@@ -409,8 +454,6 @@ double generate_gaussian_density(Grid* const grid)
 
       if(d > dmax) dmax= d;
       if(d < -1.0) count_negative++;
-
-      index++;
     }
    }
   }
@@ -427,13 +470,14 @@ void print_mock(const unsigned long seed, const size_t np,
 		const double boxsize, const double n_max,
 		Grid const * const grid)
 {
-  // input: grid of 1 + delta
+  // input: grid of 1 + delta(x)
+  assert(grid->mode == fft_mode_x);
 
   gsl_rng* rng= gsl_rng_alloc(gsl_rng_ranlxd1);
   gsl_rng_set(rng, seed);
 
   const size_t nc= grid->nc;
-  const size_t ncz= nc/2 + 1;
+  const size_t ncz= 2*(nc/2 + 1);
   const double nmean= np/(nc*nc*nc);
   double const * const n= grid->fx;
 
@@ -444,6 +488,7 @@ void print_mock(const unsigned long seed, const size_t np,
   cerr << "n_iteration= " << niter << endl;
   //cerr << niter << endl;
   size_t count= 0;
+  size_t count_negative= 0;
 				      
   for(size_t i=0; i<niter; ++i) {
     for(int k=0; k<3; ++k) {
@@ -453,6 +498,9 @@ void print_mock(const unsigned long seed, const size_t np,
     }
     size_t index= (nc*ix[0] + ix[1])*ncz + ix[2];
     double prob= n[index] / n_max;
+    assert(prob <= 1.0);
+
+    if(prob < 0.0) count_negative++;
 
     if(gsl_rng_uniform(rng) < prob) {
       printf("%e %e %e\n", x[0], x[1], x[2]);
@@ -464,6 +512,8 @@ void print_mock(const unsigned long seed, const size_t np,
   gsl_rng_free(rng);
 
   fprintf(stderr, "np= %zu, count= %zu\n", np, count);
+  if(count_negative)
+    fprintf(stderr, "negative density= %zu / %zu\n", count_negative, niter);
 }
 
 void print_xi(Grid const * const grid)
@@ -496,9 +546,9 @@ void print_pk(Grid const * const grid)
   const double fac= 2.0*M_PI/boxsize;
   
   for(int ix=0; ix<nc; ++ix) {
-    double kx= ix < nc/2 ? fac*ix : fac*(ix - nc);
+    double kx= ix <= nc/2 ? fac*ix : fac*(ix - nc);
     for(int iy=0; iy<nc; ++iy) {
-      double ky= iy < nc/2 ? fac*iy : fac*(iy - nc);
+      double ky= iy <= nc/2 ? fac*iy : fac*(iy - nc);
       for(int iz=0; iz<nckz; ++iz) {
 	double kz= fac*iz;
 	double k= sqrt(kx*kx + ky*ky + kz*kz);

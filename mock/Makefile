@@ -7,7 +7,7 @@ INCLDIRS  = $(foreach dir, $(DIRS), -I$(dir)/include)
 LIBDIRS   = $(foreach dir, $(DIRS), -L$(dir)/lib) 
 CXXFLAGS := $(INCLDIRS)
 
-OBJS1 = mock_lognormal.o grid.o power.o cosmology.o 
+OBJS1 = mock_lognormal.o grid.o power.o cosmology.o power_spectrum.o
 LIBS1 = $(LIBDIRS) -lboost_program_options -lfftw3 -lgsl -lgslcblas
 
 mock_lognormal: $(OBJS1)

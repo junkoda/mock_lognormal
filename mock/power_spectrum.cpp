@@ -2,7 +2,7 @@
 // compute power spectrum from 3D delta(k)
 //
 #include <iostream>
-#include <complex>
+//#include <complex>
 #include <vector>
 #include <valarray>
 #include <cstdio>
@@ -10,9 +10,7 @@
 #include <cmath>
 #include <cassert>
 #include <boost/program_options.hpp>
-
-#include "msg.h"
-#include "config.h"
+#include <fftw3.h>
 
 using namespace std;
 using namespace boost::program_options;
@@ -41,12 +39,14 @@ static void init_wcorr(const int nc, const int nmas)
 
 
 void compute_power_spectrum(const char filename[],
-		    complex_t* fk,
+		    fftw_complex* fk,
 		    const int nc, const double boxsize,
 		    const double k_min, const double k_max, const double dk,
 		    const int mas_correction)
 {
   const double fac= 2.0*M_PI/boxsize;
+  const double pk_fac= 1/(boxsize*boxsize*boxsize);
+
   //  const double sin_fac= 0.5*boxsize/nc;
   const int nbin= (int) round((k_max - k_min)/dk);
 
@@ -98,13 +98,13 @@ void compute_power_spectrum(const char filename[],
       //double k= k_min + (i + 0.5)*dk;
       fprintf(fp, "%e %.15e %d\n",
 	     kmean[i]/nmodes[i],
-	     P[i]/nmodes[i],
+	     pk_fac*P[i]/nmodes[i],
 	     nmodes[i]);
     }
   }
   fclose(fp);
 
-  msg_printf(msg_info, "%s written.\n", filename);
+  //msg_printf(msg_info, "%s written.\n", filename);
 }
 
 

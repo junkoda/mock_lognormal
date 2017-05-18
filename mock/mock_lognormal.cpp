@@ -15,6 +15,7 @@
 #include "power.h"
 #include "cosmology.h"
 #include "grid.h"
+#include "power_spectrum.h"
 
 
 using namespace std;
@@ -29,6 +30,7 @@ void generate_delta_k(const unsigned long seed,
 		      const int n_mas,
 		      Grid* const grid);
 
+double generate_gaussian_density(Grid* const grid);
 double generate_lognormal_density(Grid* const grid);
 
 void print_mock(const unsigned long seed, const size_t np,
@@ -59,7 +61,7 @@ int main(int argc, char* argv[])
     ("print-xi", "print xi(r), FFT of intput P(k)")
     ("print-Pkg", "print P_gaussian(k), FFT of intput P(k)")
     ("test-fft", "print P(k) after forward and inverse FFT")
-
+    ("lognormal", value<bool>()->default_value(true), "set false for Gaussia delta")
     ;
   
   positional_options_description p;
@@ -75,12 +77,13 @@ int main(int argc, char* argv[])
   }
 
   const int nc= vm["nc"].as<int>(); assert(nc > 0);
+  const size_t np= vm["np"].as<size_t>();
   //const double omega_m= vm["omega-m"].as<double>();
   //const double z= vm["z"].as<double>();
   const double boxsize= vm["boxsize"].as<double>();
+  const bool lognormal= vm["lognormal"].as<bool>();
   const bool fix_amplitude= vm.count("fix-amplitude");
   const unsigned long seed= vm["seed"].as<unsigned long>();
-  
   const string filename= vm["filename"].as<string>();
 
   const int n_mas= 0.0; // DEBUG!!!
@@ -98,7 +101,7 @@ int main(int argc, char* argv[])
 
   Grid* grid= new Grid(nc, boxsize);
 
-  //  P(k)
+  // 1. Generate a grid of target P(k)
   cerr << "generate target P(k)\n";
   set_power_spectrum(ps, boxsize, grid); // grid => P(k)
 
@@ -108,7 +111,29 @@ int main(int argc, char* argv[])
     return 0;
   }
 
-  // xi(r)
+  if(lognormal == false) {
+    //
+    // Gaussian mock
+    //
+    generate_delta_k(seed, fix_amplitude, n_mas, grid);
+    grid->fft_inverse();
+    double n_max= generate_gaussian_density(grid);
+
+    printf("# Gaussian mock");
+
+    print_mock(seed, np, boxsize, n_max, grid);
+
+
+    // DEBUG
+    grid->fft_forward();
+
+    compute_power_spectrum("pk.txt", grid->fk, nc, boxsize,
+			   0.0, 1.0, 0.01, 0.0);
+    
+    return 0;
+  }
+
+  // Convert target P(k) to xi(r)
   cerr << "FFT to xi(r)\n";
   
   grid->fft_inverse(); // grid => xi(r)
@@ -126,10 +151,11 @@ int main(int argc, char* argv[])
     return 0;
   }
 
+  // Compute Gaussian xi(r) from target xi(r)
   cerr << "convert to gaussian xi = log(1 + xi_target)\n";
-  //set_lognormal_xi(grid); // grid => xi_gaussian(r)
-  //DEBUG!!!
+  set_lognormal_xi(grid); // grid => xi_gaussian(r)
 
+  // Convert xi_gaussian(r) back to P_gaussian(k)
   // grid of P_gaussian(k)
   cerr << "FFT to P_gaussian(k)\n";
   grid->fft_forward(); // grid => P_gaussian(r)
@@ -140,10 +166,12 @@ int main(int argc, char* argv[])
     return 0;
   }
 
+  // Generate random delta(k) from P(k)
   cerr << "Generate random delta_k\n";
   generate_delta_k(seed, fix_amplitude, n_mas, grid);
   // grid => delta_gaussian(k)
 
+  // Final FFT from delta(k) to 1 + delta(x)
   cerr << "FFT to lognormal density 1 + delta(x)\n";
   grid->fft_inverse(); // grid = 1 + delta_lognormal(x)
 
@@ -151,7 +179,6 @@ int main(int argc, char* argv[])
 
   cerr << "Print lognormal mock\n";
   cerr << "n_max= " << n_max << endl;
-  const size_t np= vm["np"].as<size_t>();
 
   print_mock(seed + 100, np, boxsize, n_max, grid);
 
@@ -159,7 +186,8 @@ int main(int argc, char* argv[])
   return 0;
 }
 
-void set_power_spectrum(PowerSpectrum const * const ps, const double boxsize, Grid* const grid)
+void set_power_spectrum(PowerSpectrum const * const ps,
+			const double boxsize, Grid* const grid)
 {
   // Output: grid of P(k)
   grid->clear();
@@ -168,7 +196,8 @@ void set_power_spectrum(PowerSpectrum const * const ps, const double boxsize, Gr
 
   fftw_complex* const pk= (fftw_complex*) grid->fx; 
 
-  double fac= 2.0*M_PI/boxsize;
+  const double fac= 2.0*M_PI/boxsize;
+  
   for(int ix=0; ix<nc; ++ix) {
    double kx= ix < nc/2 ? fac*ix : fac*(ix - nc);
    for(int iy=0; iy<nc; ++iy) {
@@ -233,10 +262,20 @@ void generate_delta_k(const unsigned long seed,
 		      const int n_mas,
 		      Grid* const grid) 
 {
-  // input grid: P_gauusian(k)
-  // output grid: delta_gaussian_k(k)
+  // Convert P(k) grid to random delta(k) grid such that
+  // <|delta(k)|^2> = P(k)
+  //
+  // input grid: P(k)
+  // output grid: delta_k(k)
+
+  assert(grid->mode == fft_mode_k);
+  
   const int nc= grid->nc;
   const size_t nckz= nc/2 + 1;
+  const double boxsize= grid->boxsize;
+  const double vol= boxsize*boxsize*boxsize;
+  // P(k) = 1/V <delta(k) delta^*(k)
+
   valarray<double> v_corr(1.0, nc);
 
   gsl_rng* rng= gsl_rng_alloc(gsl_rng_ranlxd1);
@@ -246,33 +285,25 @@ void generate_delta_k(const unsigned long seed,
   double P_min= 0.0;
 
 
-  //const double fft_fac= 1.0/(nc*nc*nc);
-
   fftw_complex* const fk= (fftw_complex*) grid->fx;
   
   if(n_mas > 0)
     compute_window_array(v_corr, n_mas);
 
-  //double fac= 2.0*M_PI/boxsize;
   for(int ix=0; ix<nc; ++ix) {
-    double kx= ix < nc/2 ? ix : ix - nc;
-    //double kx= ix < nc/2 ? fac*ix : fac*(ix - nc);
+   double kx= ix < nc/2 ? ix : ix - nc;
    double corr_x= v_corr[ix];
    for(int iy=0; iy<nc; ++iy) {
-     double ky= iy < nc/2 ? iy : iy - nc;
-     //double ky= iy < nc/2 ? fac*iy : fac*(iy - nc);
+    double ky= iy < nc/2 ? iy : iy - nc;
     double corr_xy= corr_x*v_corr[iy];
     size_t index= (ix*nc + iy)*nckz;
     for(int iz=0; iz<nc/2; ++iz) {
       double kz= iz;
-      // double kz= fac*iz;
       double k= sqrt(kx*kx + ky*ky + kz*kz);
       double corr_xyz= corr_xy*v_corr[iz];
 
       double phase= gsl_rng_uniform(rng)*M_PI;
-
-      double delta2= fk[index][0]/corr_xyz;
-      
+      double delta2= vol*fk[index][0]/corr_xyz;
 
       if(!fix_amplitude) {
 	double ampl;
@@ -288,7 +319,6 @@ void generate_delta_k(const unsigned long seed,
 	P_min= fk[index][0];
 	  
       if( fk[index][0] > 0.0) {
-	//fprintf(stderr, "%e %e\n", k, delta2);
 	delta_k_mag= sqrt(delta2);
       }
       else {
@@ -352,7 +382,47 @@ double generate_lognormal_density(Grid* const grid)
 
   return nmax/fac;
 }
+
+double generate_gaussian_density(Grid* const grid)
+{
+  // input: delta(x)
+  // output: 1 + delta(x)
+
+  assert(grid->mode == fft_mode_x);
+  size_t nc= grid->nc;
+  size_t ncz= 2*(nc/2 + 1);
+  double* const delta= grid->fx;
+  long double nsum= 0.0;
+  double dmax= 0.0;
+  size_t count_negative= 0;
+  long double sum2= 0.0;
   
+  for(int ix=0; ix<nc; ++ix) {
+   for(int iy=0; iy<nc; ++iy) {
+    size_t index= (ix*nc + iy)*ncz;
+    for(int iz=0; iz<nc; ++iz) {
+      double d= delta[index];
+      nsum += 1.0 + d;
+      sum2 += d*d;
+
+      delta[index] = 1.0 + d;
+
+      if(d > dmax) dmax= d;
+      if(d < -1.0) count_negative++;
+
+      index++;
+    }
+   }
+  }
+
+  fprintf(stderr, "Negative density %zu %e\n",
+	  count_negative, count_negative/((double) nc*nc*nc));
+
+  fprintf(stderr, "sigma = %Le\n", sqrt(sum2/(nc*nc*nc)));
+  
+  return 1.0 + dmax;
+}
+
 void print_mock(const unsigned long seed, const size_t np,
 		const double boxsize, const double n_max,
 		Grid const * const grid)
@@ -422,7 +492,8 @@ void print_pk(Grid const * const grid)
 {
   const int nc= grid->nc;
   const size_t nckz= nc/2 + 1;
-  const double fac= 2.0*M_PI/grid->boxsize;
+  const double boxsize= grid->boxsize;
+  const double fac= 2.0*M_PI/boxsize;
   
   for(int ix=0; ix<nc; ++ix) {
     double kx= ix < nc/2 ? fac*ix : fac*(ix - nc);

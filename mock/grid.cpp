@@ -40,9 +40,8 @@ void Grid::fft_forward()
 
   const double fac= pow(boxsize/nc, 3.0);
   const size_t ngrid= (size_t) nc*nc*2*(nc/2 + 1);
-  for(int i=0; i<ngrid; ++i) {
+  for(int i=0; i<ngrid; ++i)
     fx[i] *= fac;
-  }
 }
 
 void Grid::fft_inverse()
@@ -54,9 +53,9 @@ void Grid::fft_inverse()
 
   const double fac= 1.0/(boxsize*boxsize*boxsize);
   const size_t ngrid= (size_t) nc*nc*2*(nc/2 + 1);
-  for(int i=0; i<ngrid; ++i) {
+
+  for(int i=0; i<ngrid; ++i)
     fx[i] *= fac;
-  }
 }
 
 void Grid::clear()

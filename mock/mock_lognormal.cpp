@@ -56,12 +56,15 @@ int main(int argc, char* argv[])
     //("omega-m", value<double>()->default_value(0.308), "Omega matter")
     ("fix-amplitude", "fix delta_k amplitude")
     ("seed", value<unsigned long>()->default_value(1), "random seed")
-    ("corrct-mas", "fix mass assignment window function")
+    ("interpolation", value<string>()->default_value("NGP"),
+     "interpolation scheme of delta(x)")
+    ("correct-mas", "fix mass assignment window function")
     ("print-Pk", "print intput P(k)")
     ("print-xi", "print xi(r), FFT of intput P(k)")
     ("print-Pkg", "print P_gaussian(k), FFT of intput P(k)")
     ("test-fft", "print P(k) after forward and inverse FFT")
     ("lognormal", value<bool>()->default_value(true), "set false for Gaussia delta")
+    ("compute-pk", value<string>(), "=filename; compute P(k) of delta_x grid")
     ;
   
   positional_options_description p;
@@ -184,10 +187,15 @@ int main(int argc, char* argv[])
 
   print_mock(seed + 100, np, boxsize, n_max, grid);
 
-  grid->fft_forward();
+  if(vm.count("compute-pk")) {
+    grid->fft_forward();
 
-  compute_power_spectrum("pk.txt", grid->fk, nc, boxsize,
-			 0.0, 1.0, 0.01, 0.0);
+    string pkfilename= vm["compute-pk"].as<string>();
+    compute_power_spectrum(pkfilename.c_str(), grid->fk, nc, boxsize,
+			   0.0, 1.0, 0.01, 0.0);
+  }
+
+  
   cerr << "Lognormal grid power spectrum written: ps.txt\n";
   
   return 0;
@@ -259,6 +267,8 @@ void compute_window_array(valarray<double>& v, const int n_mas)
   const int knq = nc/2;
   const double fac= M_PI/nc;
 
+  cerr << "MAS correction n_mas= " << n_mas << endl;
+
   for(int i=1; i<nc; ++i) {
     int k= i <= knq ? i : i - nc;
     double sinc = sin(fac*k)/(fac*k);
@@ -297,6 +307,8 @@ void generate_delta_k(const unsigned long seed,
   
   if(n_mas > 0)
     compute_window_array(v_corr, n_mas);
+  else
+    cerr << "MAS correction for delta(x) is off\n";
 
   for(int ix=0; ix<nc; ++ix) {
    if(2*ix == nc) continue;

@@ -196,10 +196,10 @@ int main(int argc, char* argv[])
     string pkfilename= vm["compute-pk"].as<string>();
     compute_power_spectrum(pkfilename.c_str(), grid->fk, nc, boxsize,
 			   0.0, 1.0, 0.01, 0.0);
-  }
 
+    cerr << "Lognormal grid power spectrum written: " << pkfilename << endl;
+  }
   
-  cerr << "Lognormal grid power spectrum written: ps.txt\n";
   
   return 0;
 }
@@ -342,7 +342,7 @@ void generate_delta_k(const unsigned long seed,
 
       double phase= gsl_rng_uniform(rng)*2*M_PI;
       
-      double delta2= vol*fk[index][0]/corr_xyz;
+      double delta2= vol*fk[index][0]*corr_xyz;
 
       double delta_k_mag= 0.0;
       if(fk[index][0] < P_min)

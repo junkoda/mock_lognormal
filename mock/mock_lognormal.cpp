@@ -56,8 +56,8 @@ int main(int argc, char* argv[])
     //("omega-m", value<double>()->default_value(0.308), "Omega matter")
     ("fix-amplitude", "fix delta_k amplitude")
     ("seed", value<unsigned long>()->default_value(1), "random seed")
-    ("interpolation", value<string>()->default_value("NGP"),
-     "interpolation scheme of delta(x)")
+    //("interpolation", value<string>()->default_value("NGP"),
+    // "interpolation scheme of delta(x)")
     ("correct-mas", "fix mass assignment window function")
     ("print-Pk", "print intput P(k)")
     ("print-xi", "print xi(r), FFT of intput P(k)")
@@ -89,7 +89,10 @@ int main(int argc, char* argv[])
   const unsigned long seed= vm["seed"].as<unsigned long>();
   const string filename= vm["filename"].as<string>();
 
-  const int n_mas= 0.0; // DEBUG!!!
+  int n_mas= 0.0;
+  if(vm.count("correct-mas")) {
+    n_mas= 1.0;
+  }
 
   cerr << "fix-amplitude= " << fix_amplitude << endl; 
 

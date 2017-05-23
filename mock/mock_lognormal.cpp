@@ -275,7 +275,7 @@ void compute_window_array(valarray<double>& v, const int n_mas)
   for(int i=1; i<nc; ++i) {
     int k= i <= knq ? i : i - nc;
     double sinc = sin(fac*k)/(fac*k);
-    v[i] = 1.0/pow(sinc, 2*n_mas);
+    v[i] = 1.0/pow(sinc, n_mas);
   }
 }
 

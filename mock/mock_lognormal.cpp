@@ -130,7 +130,7 @@ int main(int argc, char* argv[])
 
     printf("# Gaussian mock");
 
-    print_mock(seed, np, boxsize, n_max, grid);
+    print_mock(seed + 100, np, boxsize, n_max, grid);
 
 
     // DEBUG
@@ -418,10 +418,10 @@ double generate_lognormal_density(Grid* const grid)
       nsum += n;
       n2sum += n*n;
       if(n > nmax) nmax= n;
-
     }
    }
   }
+  
   cerr << "dmax= " << dmax << endl;
   cerr << "d rms= " << sqrt(d2sum/(nc*nc*nc)) << endl;
   // normalization
@@ -441,7 +441,7 @@ double generate_lognormal_density(Grid* const grid)
   }
 
   cerr << "Lognormal rms: " << sqrt(n2sum/(nbar*nbar*nc*nc*nc) - 1.0) << endl;
-  cerr << "nmax " << nmax/nbar << endl;
+  //cerr << "nmax " << nmax/nbar << endl;
   return nmax/nbar; // max(1 + delta)
 }
 
@@ -491,54 +491,42 @@ void print_mock(const unsigned long seed, const size_t np,
   // input: grid of 1 + delta(x)
   assert(grid->mode == fft_mode_x);
 
+  cerr << "start printing mock\n";
+  
   gsl_rng* rng= gsl_rng_alloc(gsl_rng_ranlxd1);
   gsl_rng_set(rng, seed);
 
   const size_t nc= grid->nc;
   const size_t ncz= 2*(nc/2 + 1);
-  const double nbar= static_cast<double>(np)/(nc*nc*nc); // number density
+
+  // mean number density over all box
+  // number of particles per cell
+  const double num_bar= static_cast<double>(np)/(nc*nc*nc);
   const double dx= boxsize/nc;
+
   double const * const n= grid->fx;
 
   double x[3];
   int ix[3];
 
-  //const size_t niter= static_cast<size_t>(n_max*np);
-  //cerr << "n_iteration= " << niter << endl;
-
   size_t count= 0;
   size_t count_negative= 0;
-
-  /*
-  for(size_t i=0; i<niter; ++i) {
-    for(int k=0; k<3; ++k) {
-      x[k]= boxsize*gsl_rng_uniform(rng);
-      ix[k]= (int) floor(x[k]/boxsize*nc);
-      ix[k]= ix[k] % nc;
-    }
-    size_t index= (nc*ix[0] + ix[1])*ncz + ix[2];
-    double prob= n[index] / n_max;
-    assert(prob <= 1.0);
-
-    if(prob < 0.0) count_negative++;
-
-    if(gsl_rng_uniform(rng) < prob) {
-      printf("%e %e %e\n", x[0], x[1], x[2]);
-      count++;
-    }
-
-  }
-  */
+  long double num_total_mean= 0;
 
   for(size_t ix=0; ix<nc; ++ix) {
     for(size_t iy=0; iy<nc; ++iy) {
       for(size_t iz=0; iz<nc; ++iz) {
-	size_t index= (ix*nc + iy)*nc + iz;
+	size_t index= (ix*nc + iy)*ncz + iz;
 
 	// mean number of particles in the cell
-	double nbar_grid= n[index]*nbar;
-	
-	int num= gsl_ran_poisson(rng, nbar_grid);
+	double num_grid= n[index]*num_bar;
+	num_total_mean += num_grid;
+
+	// random realisation of number of particles in cell
+	int num= gsl_ran_poisson(rng, num_grid);
+
+	if(n[index] < 0.0)
+	  count_negative += num;
 	
 	for(int i=0; i<num; ++i) {
 	  x[0]= (ix + gsl_rng_uniform(rng))*dx;
@@ -547,9 +535,6 @@ void print_mock(const unsigned long seed, const size_t np,
 	  printf("%e %e %e\n", x[0], x[1], x[2]);
 	}
 	count += num;
-
-	if(nbar_grid < 0.0)
-	  count_negative += num;
       }
     }
   }
@@ -579,6 +564,7 @@ void print_mock(const unsigned long seed, const size_t np,
   gsl_rng_free(rng);
 
   fprintf(stderr, "np= %zu, count= %zu\n", np, count);
+  fprintf(stderr, "num_total_mean= %Lf\n", num_total_mean);
   if(count_negative > 0)
     fprintf(stderr, "negative density= %zu / %zu\n", count_negative, count);
 }

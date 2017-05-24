@@ -8,7 +8,9 @@
 #include <string>
 #include <valarray>
 #include <cmath>
+
 #include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
 #include <boost/program_options.hpp>
 
 
@@ -65,6 +67,7 @@ int main(int argc, char* argv[])
     ("test-fft", "print P(k) after forward and inverse FFT")
     ("lognormal", value<bool>()->default_value(true), "set false for Gaussia delta")
     ("compute-pk", value<string>(), "=filename; compute P(k) of delta_x grid")
+    ("format", value<string>(), "output file format fits or ascii")
     ;
   
   positional_options_description p;
@@ -493,18 +496,20 @@ void print_mock(const unsigned long seed, const size_t np,
 
   const size_t nc= grid->nc;
   const size_t ncz= 2*(nc/2 + 1);
-  const double nmean= np/(nc*nc*nc);
+  const double nbar= static_cast<double>(np)/(nc*nc*nc); // number density
+  const double dx= boxsize/nc;
   double const * const n= grid->fx;
 
   double x[3];
   int ix[3];
 
-  const size_t niter= static_cast<size_t>(n_max*np);
-  cerr << "n_iteration= " << niter << endl;
-  //cerr << niter << endl;
+  //const size_t niter= static_cast<size_t>(n_max*np);
+  //cerr << "n_iteration= " << niter << endl;
+
   size_t count= 0;
   size_t count_negative= 0;
-				      
+
+  /*
   for(size_t i=0; i<niter; ++i) {
     for(int k=0; k<3; ++k) {
       x[k]= boxsize*gsl_rng_uniform(rng);
@@ -523,12 +528,59 @@ void print_mock(const unsigned long seed, const size_t np,
     }
 
   }
+  */
+
+  for(size_t ix=0; ix<nc; ++ix) {
+    for(size_t iy=0; iy<nc; ++iy) {
+      for(size_t iz=0; iz<nc; ++iz) {
+	size_t index= (ix*nc + iy)*nc + iz;
+
+	// mean number of particles in the cell
+	double nbar_grid= n[index]*nbar;
+	
+	int num= gsl_ran_poisson(rng, nbar_grid);
+	
+	for(int i=0; i<num; ++i) {
+	  x[0]= (ix + gsl_rng_uniform(rng))*dx;
+	  x[1]= (iy + gsl_rng_uniform(rng))*dx;
+	  x[2]= (iz + gsl_rng_uniform(rng))*dx;
+	  printf("%e %e %e\n", x[0], x[1], x[2]);
+	}
+	count += num;
+
+	if(nbar_grid < 0.0)
+	  count_negative += num;
+      }
+    }
+  }
+
+  /*
+	
+    for(size_t i=0; i<niter; ++i) {
+    for(int k=0; k<3; ++k) {
+      x[k]= boxsize*gsl_rng_uniform(rng);
+      ix[k]= (int) floor(x[k]/boxsize*nc);
+      ix[k]= ix[k] % nc;
+    }
+    size_t index= (nc*ix[0] + ix[1])*ncz + ix[2];
+    double prob= n[index] / n_max;
+    assert(prob <= 1.0);
+
+    if(prob < 0.0) count_negative++;
+
+    if(gsl_rng_uniform(rng) < prob) {
+      printf("%e %e %e\n", x[0], x[1], x[2]);
+      count++;
+    }
+
+  }
+  */
     
   gsl_rng_free(rng);
 
   fprintf(stderr, "np= %zu, count= %zu\n", np, count);
-  if(count_negative)
-    fprintf(stderr, "negative density= %zu / %zu\n", count_negative, niter);
+  if(count_negative > 0)
+    fprintf(stderr, "negative density= %zu / %zu\n", count_negative, count);
 }
 
 void print_xi(Grid const * const grid)

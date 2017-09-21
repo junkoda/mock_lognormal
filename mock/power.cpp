@@ -5,7 +5,7 @@
 #include <gsl/gsl_spline.h>
 #include "power.h"
 
-PowerSpectrum* power_alloc(const char filename[], const double sigma_8)
+PowerSpectrum* power_alloc(const char filename[], const double growth, const double sigma_8)
 {
   PowerSpectrum* ps= (PowerSpectrum*) malloc(sizeof(PowerSpectrum)); assert(ps);
 
@@ -14,7 +14,8 @@ PowerSpectrum* power_alloc(const char filename[], const double sigma_8)
     fprintf(stderr, "Error: Unable to open input power spectrum file: %s\n",filename);
     abort();
   }
-      
+
+  double fac= growth > 0.0 ? growth*growth : 1.0; 
 
   int nalloc= 1000;
   double* buf= (double*) malloc(sizeof(double)*2*nalloc);
@@ -46,7 +47,7 @@ PowerSpectrum* power_alloc(const char filename[], const double sigma_8)
       }
       
       buf[2*nlines    ]= k;
-      buf[2*nlines + 1]= P;
+      buf[2*nlines + 1]= fac*P;
 
       // sigma_8 computation
       double x= k*Rth;

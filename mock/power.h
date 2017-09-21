@@ -14,7 +14,7 @@ typedef struct {
   double k_min, k_max;
 } PowerSpectrum;
 
-PowerSpectrum* power_alloc(const char filename[], const double sigma_8= 0.0);
+PowerSpectrum* power_alloc(const char filename[], const double growth=0.0, const double sigma_8= 0.0);
 PowerSpectrum* power_alloc(const double k_min, const double k_max,
 			   const double dk);
 

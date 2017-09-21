@@ -16,10 +16,10 @@ planck_matterpower.dat: Tabulated k P(k) at z=0
 
 ### Options
 --boxsize length of the preiodic box on a side
---nc      number of grids per dimension
---z       Redshift of the mock
---omega_m Omega matter at present
---np      Number of output particles
+--nc      number of grids per dimension (default 64)
+--z       Redshift of the mock (default 0)
+--omega_m Omega matter at present (default 0.308)
+--np      Number of output particles (default 1000)
 
 --lognormal outputs become lognormal density mock (default is Gaussian)
 

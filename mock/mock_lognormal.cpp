@@ -96,7 +96,10 @@ int main(int argc, char* argv[])
   // Growth factor for RSD
   const bool rsd= vm.count("rsd");
   const double f= rsd ? cosmology_f_growth_rate(a) : 0.0;
- 
+
+  fprintf(stderr, "Growth factor D: %.15e\n", growth);
+  fprintf(stderr, "Growth rate f: %.15e\n", f);
+  
   // Load power spectrum
   PowerSpectrum* const ps= power_alloc(filename.c_str(), growth);
 
@@ -121,7 +124,7 @@ int main(int argc, char* argv[])
     grid->fft_inverse();
     double n_max= generate_gaussian_density(grid);
 
-    printf("# Gaussian mock");
+    fprintf(stderr, "Generating Gaussian mock...");
 
     print_mock(seed + 100, np, boxsize, n_max, grid);
 

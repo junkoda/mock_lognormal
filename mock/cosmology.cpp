@@ -23,7 +23,7 @@ void cosmology_init(const double omega_m0_)
 {
   omega_m0= omega_m0_;
 
-  printf("Cosmology initialised with omega_m = %.7f\n", omega_m0);
+  fprintf(stderr, "Cosmology initialised with omega_m = %.7f\n", omega_m0);
 
   growth_normalisation= 1.0/growth_unnormalised(1.0); // D_growth=1 at a=1
 }
@@ -126,7 +126,7 @@ void check_initialisation()
 {
   // Check if this module is initilised
   if(growth_normalisation == 0.0) {
-    printf("Error: cosmology module not initialised.\n");
+    fprintf(stderr, "Error: cosmology module not initialised.\n");
     throw 0;
   }
 }

@@ -3,6 +3,9 @@ DIRS      =
 
 all: $(EXEC)
 
+DIRS := # non standard library location e.g. /opt/local
+
+# Add include and lib to DIRS
 INCLDIRS  = $(foreach dir, $(DIRS), -I$(dir)/include)
 LIBDIRS   = $(foreach dir, $(DIRS), -L$(dir)/lib) 
 CXXFLAGS := $(INCLDIRS)
